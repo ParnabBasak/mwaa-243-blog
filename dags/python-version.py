@@ -15,16 +15,18 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 from airflow import DAG, Dataset
-from airflow.decorators import task
+from airflow.decorators import dag, task
 import pendulum
 from airflow.operators.bash import BashOperator
 
-with DAG(
+
+@dag(
     dag_id="python_version_checker",
     description="This dag demonstrates the use of BashOperator to find the Python version",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     schedule=None,
-    tags=["airflow2.4", "python-version"]):
+    tags=["airflow2.4", "python-version"])
+def python_version_checker():
 
     run_this = BashOperator(
         task_id="check_python_version",
@@ -32,3 +34,6 @@ with DAG(
     )
 
     run_this
+
+
+python_version_checker()

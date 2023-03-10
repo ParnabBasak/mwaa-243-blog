@@ -17,6 +17,7 @@ import os
 import pendulum
 
 from airflow import DAG, Dataset
+from airflow.decorators import dag, task
 from airflow.decorators import task
 from airflow.operators.python import PythonOperator
 
@@ -25,56 +26,53 @@ weather_dataset = Dataset("s3://airflow2.4.3parnab/data/test.csv")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "airflow2.4.3parnab")
 S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX", "data")
 
-def _transfer_from_api_to_s3(bucket, key):
-    import requests
-    import logging
-    import pandas as pd
-
-    import boto3
-    from botocore.exceptions import ClientError
-    from tempfile import NamedTemporaryFile
-
-    url = "https://www.7timer.info/bin/astro.php?lon=113.2&lat=23.1&ac=0&unit=metric&output=json&tzshift=0"
-
-    try:
-        logging.info("Attempting to get data from api")
-        response = requests.get(url)
-        logging.info("Response: %s", response.json())
-        response.raise_for_status()
-    except Exception as ex:
-        logging.error("Exception occured while trying to get response from API")
-        logging.error(ex)
-
-    data = response.json()
-
-    df = pd.DataFrame.from_records(data)
-
-    with NamedTemporaryFile("w+b") as file:
-        df.to_csv(file.name, index=False)
-        s3_client = boto3.client('s3')
-        try:
-            response = s3_client.upload_file(file.name, bucket, key)
-        except ClientError as e:
-            logging.error(e)
-            return False
-        logging.info("Storing object: %s/%s.", bucket, key)
-        return True
-        
-
-with DAG(
+@dag(
     dag_id='data_aware_producer',
     description="This dag demonstrates a simple dataset producer",
     schedule=None,
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     catchup=False,
-    tags=["airflow2.4", "dataset", "dataset-producer"]):
+    tags=["airflow2.4", "dataset", "dataset-producer"],
+)
+def data_aware_producer():
+    
+    @task(task_id="transfer_api_to_s3", outlets=[weather_dataset])
+    def _transfer_from_api_to_s3(bucket, key):
+        import requests
+        import logging
+        import pandas as pd
 
-    transfer_from_api_to_s3 = PythonOperator(
-        task_id="transfer_api_to_s3",
-        python_callable=_transfer_from_api_to_s3,
-        op_kwargs={
-            "bucket": S3_BUCKET_NAME,
-            "key": f"{S3_BUCKET_PREFIX}/test.csv",
-        },
-        outlets=[weather_dataset],
-    )
+        import boto3
+        from botocore.exceptions import ClientError
+        from tempfile import NamedTemporaryFile
+
+        url = "https://www.7timer.info/bin/astro.php?lon=113.2&lat=23.1&ac=0&unit=metric&output=json&tzshift=0"
+
+        try:
+            logging.info("Attempting to get data from api")
+            response = requests.get(url)
+            logging.info("Response: %s", response.json())
+            response.raise_for_status()
+        except Exception as ex:
+            logging.error(
+                "Exception occured while trying to get response from API")
+            logging.error(ex)
+
+        data = response.json()
+
+        df = pd.DataFrame.from_records(data)
+
+        with NamedTemporaryFile("w+b") as file:
+            df.to_csv(file.name, index=False)
+            s3_client = boto3.client('s3')
+            try:
+                response = s3_client.upload_file(file.name, bucket, key)
+            except ClientError as e:
+                logging.error(e)
+                return False
+            logging.info("Storing object: %s/%s.", bucket, key)
+            return True
+
+    _transfer_from_api_to_s3(S3_BUCKET_NAME, f"{S3_BUCKET_PREFIX}/test.csv")
+
+data_aware_producer()

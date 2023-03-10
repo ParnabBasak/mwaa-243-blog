@@ -15,7 +15,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import os
 from airflow import DAG, Dataset
-from airflow.decorators import task
+from airflow.decorators import dag, task
 import pendulum
 from airflow.operators.python import PythonOperator
 
@@ -24,29 +24,25 @@ weather_dataset = Dataset("s3://airflow2.4.3parnab/data/test.csv")
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "airflow2.4.3parnab")
 S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX", "data")
 
-
-def _list_objects(bucket, prefix):
-    import boto3
-    import logging
-    
-    s3_client = boto3.client("s3")
-    response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    files = response.get("Contents")
-    for file in files:
-        logging.info(f"file_name: {file['Key']}, size: {file['Size']}")    
-
-with DAG(
+@dag(
     dag_id="data_aware_consumer",
     description="This dag demonstrates a simple dataset consumer",
     start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),
     schedule=[weather_dataset],
-    tags=["airflow2.4", "dataset", "dataset-consumer"]):
+    tags=["airflow2.4", "dataset", "dataset-consumer"])
+def data_aware_consumer():
+   
+    @task(task_id="list_objects")
+    def _list_objects(bucket, prefix):
+        import boto3
+        import logging
+        
+        s3_client = boto3.client("s3")
+        response = s3_client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        files = response.get("Contents")
+        for file in files:
+            logging.info(f"file_name: {file['Key']}, size: {file['Size']}")
 
-    list_objects = PythonOperator(
-        task_id="list_objects",
-        python_callable=_list_objects,
-        op_kwargs={
-            "bucket": S3_BUCKET_NAME,
-            "prefix": S3_BUCKET_PREFIX
-        },
-    )
+    _list_objects(S3_BUCKET_NAME, S3_BUCKET_PREFIX) 
+
+data_aware_consumer()

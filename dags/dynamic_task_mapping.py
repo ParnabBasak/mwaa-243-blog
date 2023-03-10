@@ -17,18 +17,20 @@ import os
 import pendulum
 
 from airflow import DAG, XComArg
-from airflow.decorators import task
+from airflow.decorators import dag, task
 from airflow.providers.amazon.aws.hooks.s3 import S3Hook
 from airflow.providers.amazon.aws.operators.s3 import S3ListOperator
 
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "airflow2.4.3parnab")
 S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX", "data")
 
-with DAG(
+@dag(
     dag_id="dynamic_task_mapping", 
     description="This dag demonstrates a dynamic task mapping",
     schedule=None,
-    start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),):
+    start_date=pendulum.datetime(2023, 1, 1, tz="UTC"),)
+def dynamic_task_mapping():
+
     files = S3ListOperator(
         task_id="dynamic_task_mapping_get_input",
         bucket=S3_BUCKET_NAME,
@@ -49,3 +51,5 @@ with DAG(
         file=XComArg(files)
     )
     total(lines=counts)
+
+dynamic_task_mapping()
